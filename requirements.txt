@@ -1,0 +1,35 @@
+# Reference CUDA 12.8 stack. Adjust the PyTorch index/build for your cluster.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.9.1+cu128
+torchaudio==2.9.1+cu128
+torchvision==0.24.1+cu128
+
+# Vendored ms-swift with MAPO modifications. This installs ms-swift's base deps.
+-e ./libs/ms-swift
+
+# Megatron/vLLM training stack used by the MAPO launchers.
+megatron-core==0.15.4
+vllm==0.14.0
+transformer_engine==2.12.0
+transformer_engine_cu12==2.12.0
+transformer_engine_torch==2.12.0
+
+# Qwen-Omni and audio processing helpers.
+qwen-omni-utils==0.0.9
+qwen-vl-utils==0.0.14
+soundfile==0.13.1
+decord==0.6.0
+librosa==0.11.0
+
+# Runtime helpers used by rewards and benchmark evaluation.
+requests==2.32.5
+nltk==3.9.3
+tqdm==4.67.3
+numpy==1.26.4
+pandas==2.3.3
+pyarrow==23.0.1
+scikit-learn==1.8.0
+
+# Install a flash-attn wheel matching your Torch/CUDA build if this source
+# build is unsuitable for your machine.
+flash-attn==2.7.4

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 resolve_answer_extraction_mode() {
-    local default_mode="${1:-answer_tag}"
+    local default_mode="${1:-post_think}"
     shift || true
 
     local hint="${*,,}"

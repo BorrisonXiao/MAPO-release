@@ -108,7 +108,7 @@ resolved_answer_extraction_mode="${answer_extraction_mode}"
 if [ "${answer_extraction_mode}" = "auto" ]; then
     resolved_answer_extraction_mode="$(
         resolve_answer_extraction_mode \
-            "answer_tag" \
+            "post_think" \
             "${base_model_name_or_path:-}" \
             "${model_name_or_path:-}" \
             "${adapter_name_or_path:-}" \

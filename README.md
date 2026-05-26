@@ -26,48 +26,6 @@ Audio and omni-modal LLMs exhibit impressive cross-modal reasoning, yet standard
 
 These mechanisms operate synergistically: the relevance mask allocates disproportionate optimization budget to modality-dependent tokens, while the attention loss actively encourages the model to *create* and *sustain* those grounding signals. By relying strictly on native attention weights and predictive entropy rather than domain-specific heuristics, MAPO provides a general foundation for mitigating epistemic collapse across diverse multimodal systems.
 
-<!-- ### Late-Stage Modality Collapse
-
-As shown below, standard models exhibit a pronounced decay in audio attention mass during extended generation. Text-only entropy (left) fails to detect this collapse — the model becomes pathologically confident in its hallucinations. Cross-modal differential entropy (right) cuts through this false confidence, strongly correlating with the attention decay.
-
-<p align="center">
-  <img src="assets/modality_collapse.png" alt="Modality Collapse and Cross-Modal Entropy" width="100%">
-</p> -->
-
----
-
-## Key Equations
-
-### Cross-Modal Differential Entropy
-
-The core signal driving both MAPO mechanisms is the token-level entropy difference between a frozen text-only reference model and the live multimodal policy:
-
-$$\Delta h_t = H(\pi_{\text{text-ref}}(\cdot \mid y_{<t}, x_{\text{text}})) - H(\pi_\theta(\cdot \mid y_{<t}, x))$$
-
-When generating grammatical scaffolding, both models exhibit low uncertainty ($\Delta h_t \approx 0$). For audio-dependent tokens, the text-only model must guess from its language prior (high entropy), and $\Delta h_t$ captures the information gain provided by the audio modality.
-
-### Modality Relevance Mask
-
-$$\tilde{\omega}_t = \min\!\left( T \cdot \frac{\exp\!\big(|\Delta h_t| / \tau_T\big)}{\sum_{t'} \exp\!\big(|\Delta h_{t'}| / \tau_T\big)}, \; C_{\text{mask}} \right)$$
-
-where $\tau_T = \tau_{\text{base}} \log(\max(T, 2))$ is a length-scaled temperature and $C_{\text{mask}}$ caps extreme single-token amplification.
-
-### Reweighted Policy Gradient
-
-$$\mathcal{L}_{\text{PG}}(\tilde{\omega}) = \frac{1}{G} \sum_{g=1}^{G} \frac{\sum_{t=1}^{T_g} \tilde{\omega}_t^{(g)} \cdot \ell_t^{\text{PG}, (g)}}{\sum_{t=1}^{T_g} \tilde{\omega}_t^{(g)}}$$
-
-Normalizing by $\sum \tilde{\omega}_t$ keeps the effective learning rate invariant to the mask scale.
-
-### Attention Loss Branch
-
-$$\mathcal{L}_{\text{attn}} = \frac{1}{G}\sum_{g=1}^{G} \min\!\Big(\hat{f}^{(g)} \cdot |\hat{A}^{(g)}|, \, C_{\text{pref}}\Big) \frac{1}{N_{\text{pos}}^{(g)}} \sum_{t=1}^{T_g} (t/T_g)^\kappa \cdot \tilde{\nu}_t^{(g)} \cdot \big(-\log(a_t^{(g)} + \varepsilon)\big)$$
-
-A POS gate restricts the penalty to substantive tokens, a temporal weight $(t/T)^\kappa$ concentrates it at the tail, and a soft task-failure gate $\hat{f}$ prevents penalizing already-correct trajectories. The gradient flows directly into the transformer's multi-head attention parameters, redirecting queries away from text and back toward the audio sequence.
-
-### MAPO Objective
-
-$$\mathcal{L}_{\text{MAPO}} = \mathcal{L}_{\text{PG}}(\tilde{\omega}) + \beta \cdot \mathcal{L}_{\text{KL}} + \eta \cdot \mathcal{L}_{\text{attn}}$$
-
 ---
 
 ## Key Results
@@ -82,6 +40,22 @@ MAPO sets new state-of-the-art among open-weights models on major audio reasonin
 | **MMAU-Pro** | Instruction Following & Open QA | 62.63 | **65.29** |
 
 Ablation studies confirm that both components are necessary: the mask alone recovers performance (70.53), while adding the attention branch yields a full-point gain (71.51). Full fine-tuning with the complete MAPO objective at scale (Phase 2) reaches the best average of 73.34 across benchmarks.
+
+### How the Attention Branch Prevents Collapse
+
+The figure below contrasts token-level audio attention mass and cross-modal differential entropy ($\Delta h_t$) across three configurations during an extended reasoning trajectory. The baseline and mask-only (No-Attn-Loss) variants exhibit severe late-stage modality collapse — audio attention decays precipitously midway through generation, and the model defaults to its language prior, arriving at an incorrect answer. The full MAPO framework sustains elevated audio attention deep into the reasoning chain, and the corresponding $\Delta h_t$ signal remains strong, indicating that the model continues to *use* the audio signal to shape its predictive distribution — not merely attend to it.
+
+<p align="center">
+  <img src="assets/contrast_0.png" alt="Attention Branch Ablation" width="100%">
+</p>
+
+### Attention Loss Training Dynamics
+
+The auxiliary attention loss ($\mathcal{L}_{\text{attn}}$) directly steers the transformer's multi-head attention parameters, rerouting query representations from the text context back toward the audio sequence. The plot below tracks the trajectory of $\mathcal{L}_{\text{attn}}$ over training steps under varying penalty weights ($\eta$). Higher $\eta$ enforces a structurally elevated baseline of cross-modal grounding, counteracting the natural decay of source attention and permanently anchoring the model's perceptual bandwidth to the acoustic signal.
+
+<p align="center">
+  <img src="assets/inline.png" alt="Attention Loss Trajectory" width="50%">
+</p>
 
 ---
 

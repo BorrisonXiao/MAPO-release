@@ -25,38 +25,6 @@ Audio and omni-modal LLMs exhibit impressive cross-modal reasoning, yet standard
 
 ---
 
-## Key Equations
-
-### Cross-Modal Differential Entropy
-
-The core signal driving both MAPO mechanisms is the token-level entropy difference between a frozen text-only reference model and the live multimodal policy:
-
-$$\Delta h_t = H(\pi_{\text{text-ref}}(\cdot \mid y_{<t}, x_{\text{text}})) - H(\pi_\theta(\cdot \mid y_{<t}, x))$$
-
-When generating grammatical scaffolding, both models agree ($\Delta h_t \approx 0$). For audio-dependent tokens, the text-only model must guess from its language prior, and $\Delta h_t$ captures the information gain provided by the audio modality.
-
-### Modality Relevance Mask
-
-$$\tilde{\omega}_t = \min\!\left( T \cdot \frac{\exp\!\big(|\Delta h_t| / \tau_T\big)}{\sum_{t'} \exp\!\big(|\Delta h_{t'}| / \tau_T\big)}, \; C_{\text{mask}} \right)$$
-
-where $\tau_T = \tau_{\text{base}} \log(\max(T, 2))$ is a length-scaled temperature. The mask is then normalized so that $\sum \tilde{\omega}_t = 1$, keeping the effective learning rate invariant to scale.
-
-### Reweighted Policy Gradient
-
-$$\mathcal{L}_{\text{PG}}(\tilde{\omega}) = \frac{1}{G} \sum_{g=1}^{G} \frac{\sum_{t=1}^{T_g} \tilde{\omega}_t^{(g)} \cdot \ell_t^{\text{PG}, (g)}}{\sum_{t=1}^{T_g} \tilde{\omega}_t^{(g)}}$$
-
-### Attention Loss Branch
-
-$$\mathcal{L}_{\text{attn}} = \frac{1}{G}\sum_{g=1}^{G} \min\!\Big(\hat{f}^{(g)} \cdot |\hat{A}^{(g)}|, \, C_{\text{pref}}\Big) \frac{1}{N_{\text{pos}}^{(g)}} \sum_{t=1}^{T_g} (t/T_g)^\kappa \cdot \tilde{\nu}_t^{(g)} \cdot \big(-\log(a_t^{(g)} + \varepsilon)\big)$$
-
-A POS gate restricts the penalty to substantive tokens; $(t/T)^\kappa$ concentrates it at the tail; a soft task-failure gate $\hat{f}$ prevents penalizing already-correct trajectories. Gradients flow directly into the transformer's multi-head attention parameters — redirecting queries away from text and back toward the audio sequence.
-
-### Total Objective
-
-$$\mathcal{L}_{\text{MAPO}} = \mathcal{L}_{\text{PG}}(\tilde{\omega}) + \beta \cdot \mathcal{L}_{\text{KL}} + \eta \cdot \mathcal{L}_{\text{attn}}$$
-
----
-
 ## Key Results
 
 MAPO sets new state-of-the-art among open-weights models on major audio reasoning benchmarks, evaluated across sound, music, and speech domains:

@@ -1,11 +1,7 @@
 <p align="center">
-  <h1 align="center">MAPO: Modality-Aware Policy Optimization</h1>
-  <p align="center">
-    <em>Escape the Language Prior — Mitigating Late-Stage Modality Collapse in Audio Reasoning</em>
-  </p>
-  <!-- <p align="center">
-    <sub><b>Anonymous Repository</b> — code accompanying a paper under double-blind review</sub>
-  </p> -->
+  <h1>MAPO</h1>
+  <h3>Modality-Aware Policy Optimization</h3>
+  <p><em>Escape the Language Prior — Mitigating Late-Stage Modality Collapse in Audio Reasoning</em></p>
 </p>
 
 ---
@@ -15,16 +11,49 @@
 Audio and omni-modal LLMs exhibit impressive cross-modal reasoning, yet standard RL post-training (GRPO, PPO, DPO) applies **uniform policy gradients across all tokens**, ignoring the unequal dependence on non-text modalities. This structural inefficiency leads to **late-stage modality collapse**: during extended chain-of-thought generation, models progressively abandon the primary audio signal, relying instead on compressed textual priors — producing confident but ungrounded hallucinations.
 
 <p align="center">
-  <img src="assets/MAPO-v2.png" alt="MAPO Framework Overview" width="100%">
+  <img src="assets/MAPO-v2.png" alt="MAPO Framework Overview" width="100%"><br>
+  <sub><i>The MAPO framework. <b>(a)</b> Late-stage modality collapse, where attention shifts from source audio to text prior during CoT. <b>(b)</b> MAPO mitigates this via a dual-branch architecture — a modality relevance mask reweights the policy gradient, while an attention loss branch enforces sustained cross-modal grounding.</i></sub>
 </p>
 
-**MAPO** is a dual-branch RL framework that addresses late-stage modality collapse through two complementary mechanisms:
+**MAPO** is a dual-branch RL framework with two complementary mechanisms:
 
 1. **Modality Relevance Mask** ($\tilde{\omega}$) — dynamically concentrates the policy gradient on audio-critical tokens using cross-modal differential entropy, derived from the predictive gap between an audio-ablated reference model and the multimodal policy.
 
 2. **Attention Loss Branch** ($\mathcal{L}_{\text{attn}}$) — applies a targeted, temporally scaled penalty to the model's internal attention distributions at substantive tokens, ensuring the model actively sustains cross-modal grounding deep into the reasoning trace.
 
-These mechanisms operate synergistically: the relevance mask allocates disproportionate optimization budget to modality-dependent tokens, while the attention loss actively encourages the model to *create* and *sustain* those grounding signals. By relying strictly on native attention weights and predictive entropy rather than domain-specific heuristics, MAPO provides a general foundation for mitigating epistemic collapse across diverse multimodal systems.
+> These mechanisms operate synergistically: the relevance mask allocates disproportionate optimization budget to modality-dependent tokens, while the attention loss actively encourages the model to *create* and *sustain* those grounding signals. By relying strictly on native attention weights and predictive entropy rather than domain-specific heuristics, MAPO provides a general foundation for mitigating epistemic collapse across diverse multimodal systems.
+
+---
+
+## Key Equations
+
+### Cross-Modal Differential Entropy
+
+The core signal driving both MAPO mechanisms is the token-level entropy difference between a frozen text-only reference model and the live multimodal policy:
+
+$$\Delta h_t = H(\pi_{\text{text-ref}}(\cdot \mid y_{<t}, x_{\text{text}})) - H(\pi_\theta(\cdot \mid y_{<t}, x))$$
+
+When generating grammatical scaffolding, both models agree ($\Delta h_t \approx 0$). For audio-dependent tokens, the text-only model must guess from its language prior, and $\Delta h_t$ captures the information gain provided by the audio modality.
+
+### Modality Relevance Mask
+
+$$\tilde{\omega}_t = \min\!\left( T \cdot \frac{\exp\!\big(|\Delta h_t| / \tau_T\big)}{\sum_{t'} \exp\!\big(|\Delta h_{t'}| / \tau_T\big)}, \; C_{\text{mask}} \right)$$
+
+where $\tau_T = \tau_{\text{base}} \log(\max(T, 2))$ is a length-scaled temperature. The mask is then normalized so that $\sum \tilde{\omega}_t = 1$, keeping the effective learning rate invariant to scale.
+
+### Reweighted Policy Gradient
+
+$$\mathcal{L}_{\text{PG}}(\tilde{\omega}) = \frac{1}{G} \sum_{g=1}^{G} \frac{\sum_{t=1}^{T_g} \tilde{\omega}_t^{(g)} \cdot \ell_t^{\text{PG}, (g)}}{\sum_{t=1}^{T_g} \tilde{\omega}_t^{(g)}}$$
+
+### Attention Loss Branch
+
+$$\mathcal{L}_{\text{attn}} = \frac{1}{G}\sum_{g=1}^{G} \min\!\Big(\hat{f}^{(g)} \cdot |\hat{A}^{(g)}|, \, C_{\text{pref}}\Big) \frac{1}{N_{\text{pos}}^{(g)}} \sum_{t=1}^{T_g} (t/T_g)^\kappa \cdot \tilde{\nu}_t^{(g)} \cdot \big(-\log(a_t^{(g)} + \varepsilon)\big)$$
+
+A POS gate restricts the penalty to substantive tokens; $(t/T)^\kappa$ concentrates it at the tail; a soft task-failure gate $\hat{f}$ prevents penalizing already-correct trajectories. Gradients flow directly into the transformer's multi-head attention parameters — redirecting queries away from text and back toward the audio sequence.
+
+### Total Objective
+
+$$\mathcal{L}_{\text{MAPO}} = \mathcal{L}_{\text{PG}}(\tilde{\omega}) + \beta \cdot \mathcal{L}_{\text{KL}} + \eta \cdot \mathcal{L}_{\text{attn}}$$
 
 ---
 
@@ -32,29 +61,35 @@ These mechanisms operate synergistically: the relevance mask allocates dispropor
 
 MAPO sets new state-of-the-art among open-weights models on major audio reasoning benchmarks, evaluated across sound, music, and speech domains:
 
-| Benchmark | Focus | Qwen3-Omni-Think (base) | MAPO |
+<p align="center">
+
+| Benchmark | Focus | Base | MAPO |
 |:---|:---|---:|---:|
 | **MMAU** | Multi-task Audio Understanding | 75.00 | **77.80** |
 | **MMAR** | Deep Audio Reasoning | 66.90 | **70.90** |
 | **MMSU** | Spoken Language Understanding | 76.30 | **79.36** |
 | **MMAU-Pro** | Instruction Following & Open QA | 62.63 | **65.29** |
 
-Ablation studies confirm that both components are necessary: the mask alone recovers performance (70.53), while adding the attention branch yields a full-point gain (71.51). Full fine-tuning with the complete MAPO objective at scale (Phase 2) reaches the best average of 73.34 across benchmarks.
+</p>
+
+> Ablation studies confirm that both components are necessary: the mask alone recovers performance (70.53), while adding the attention branch yields a full-point gain (71.51). Full fine-tuning with the complete MAPO objective at scale (Phase 2) reaches the best average of **73.34** across benchmarks.
 
 ### How the Attention Branch Prevents Collapse
 
-The figure below contrasts token-level audio attention mass and cross-modal differential entropy ($\Delta h_t$) across three configurations during an extended reasoning trajectory. The baseline and mask-only (No-Attn-Loss) variants exhibit severe late-stage modality collapse — audio attention decays precipitously midway through generation, and the model defaults to its language prior, arriving at an incorrect answer. The full MAPO framework sustains elevated audio attention deep into the reasoning chain, and the corresponding $\Delta h_t$ signal remains strong, indicating that the model continues to *use* the audio signal to shape its predictive distribution — not merely attend to it.
+The figure below contrasts token-level audio attention mass and cross-modal differential entropy ($\Delta h_t$) across three configurations during an extended reasoning trajectory. The baseline and mask-only variants exhibit severe late-stage modality collapse — audio attention decays midway through generation, and the model defaults to its language prior, arriving at an incorrect answer. The full MAPO framework sustains elevated audio attention deep into the reasoning chain, and the $\Delta h_t$ signal remains strong, indicating the model continues to *use* the audio to shape its predictions — not merely attend to it.
 
 <p align="center">
-  <img src="assets/contrast_0.png" alt="Attention Branch Ablation" width="100%">
+  <img src="assets/contrast_0.png" alt="Attention Branch Ablation" width="100%"><br>
+  <sub><i>Token-level attention mass and $\Delta h_t$ for three configurations on the same example. Baseline and No-Attn-Loss both collapse and answer incorrectly; full MAPO sustains grounding and answers correctly.</i></sub>
 </p>
 
 ### Attention Loss Training Dynamics
 
-The auxiliary attention loss ($\mathcal{L}_{\text{attn}}$) directly steers the transformer's multi-head attention parameters, rerouting query representations from the text context back toward the audio sequence. The plot below tracks the trajectory of $\mathcal{L}_{\text{attn}}$ over training steps under varying penalty weights ($\eta$). Higher $\eta$ enforces a structurally elevated baseline of cross-modal grounding, counteracting the natural decay of source attention and permanently anchoring the model's perceptual bandwidth to the acoustic signal.
+The auxiliary attention loss directly steers the transformer's multi-head attention parameters, rerouting query representations from text context back toward the audio sequence. The plot below tracks $\mathcal{L}_{\text{attn}}$ over training steps under varying penalty weights ($\eta$).
 
 <p align="center">
-  <img src="assets/inline.png" alt="Attention Loss Trajectory" width="50%">
+  <img src="assets/inline.png" alt="Attention Loss Trajectory" width="50%"><br>
+  <sub><i>$\mathcal{L}_{\text{attn}}$ trajectory across training steps. Higher $\eta$ enforces a structurally elevated baseline of cross-modal grounding.</i></sub>
 </p>
 
 ---
@@ -67,15 +102,24 @@ mapo-release/
 ├── assets/                              # Method figures
 ├── src/
 │   ├── mapo/                            # Training launchers
-│   │   ├── start_train.sh               # RL training entry point
-│   │   ├── start_rollout.sh             # vLLM rollout server
-│   │   └── start_checker.sh             # Consistency-checker server
-│   ├── mmau/                            # MMAU benchmark inference + eval
-│   ├── mmar/                            # MMAR benchmark inference + eval
-│   ├── mmsu/                            # MMSU benchmark inference + eval
-│   ├── mmau-pro/                        # MMAU-Pro benchmark inference + eval
+│   │   ├── start_train.sh               #   RL training entry point
+│   │   ├── start_rollout.sh             #   vLLM rollout server
+│   │   └── start_checker.sh             #   Consistency-checker server
+│   ├── mmau/                            # MMAU benchmark
+│   │   ├── infer.sh
+│   │   └── scripts/
+│   ├── mmar/                            # MMAR benchmark
+│   │   ├── infer.sh
+│   │   └── scripts/
+│   ├── mmsu/                            # MMSU benchmark
+│   │   ├── infer.sh
+│   │   └── scripts/
+│   ├── mmau-pro/                        # MMAU-Pro benchmark
+│   │   ├── infer.sh
+│   │   ├── eval.sh
+│   │   └── scripts/
 │   ├── rewards/
-│   │   └── audio_qa_rewards.py          # Reward functions (acc, format, consistency)
+│   │   └── audio_qa_rewards.py          #   Reward functions
 │   └── utils/
 │       ├── answer_extraction_mode.sh
 │       ├── export_detail_txt.py
@@ -84,9 +128,9 @@ mapo-release/
 └── libs/
     └── ms-swift/swift/megatron/
         └── trainers/
-            ├── mapo_trainer.py              # MAPO training logic
-            ├── mapo_attention_collector.py  # Cross-modal attention extraction
-            └── mapo_pos_utils.py            # POS gating utilities
+            ├── mapo_trainer.py              #   MAPO training logic
+            ├── mapo_attention_collector.py  #   Cross-modal attention extraction
+            └── mapo_pos_utils.py            #   POS gating utilities
 ```
 
 ---
@@ -100,25 +144,33 @@ git clone <this-repo-url> mapo-release
 cd mapo-release
 ```
 
-**With venv:**
+<details open>
+<summary><b>With venv</b></summary>
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
+</details>
 
-**With conda:**
+<details>
+<summary><b>With conda</b></summary>
+
 ```bash
 conda create -n mapo python=3.11 -y && conda activate mapo
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
+</details>
 
-`start_train.sh` uses `MEGATRON_LM_PATH` if set; otherwise it auto-clones NVIDIA Megatron-LM `core_r0.15.0` into `libs/Megatron-LM`.
+> `start_train.sh` uses `MEGATRON_LM_PATH` if set; otherwise it auto-clones NVIDIA Megatron-LM `core_r0.15.0` into `libs/Megatron-LM` on first launch.
 
 ---
 
-## Environment
+## Quick Start
+
+### Environment
 
 ```bash
 export MAPO_ROOT="$(pwd)"
@@ -129,9 +181,7 @@ export DATA_ROOT="${MAPO_ROOT}/data"
 
 Model weights are **not** included. Place datasets under `${DATA_ROOT}` or pass `--dataset-path` explicitly.
 
----
-
-## Training
+### Training
 
 MAPO uses an asynchronous distributed setup with dedicated rollout and training nodes.
 
@@ -159,24 +209,22 @@ bash "${MAPO_ROOT}/src/mapo/start_train.sh" \
   --exp-dir "${MAPO_ROOT}/exp/mapo/run"
 ```
 
----
-
-## Benchmark Inference
+### Benchmark Inference
 
 All launchers follow a three-stage pipeline:
 
 | Stage | Description |
-|:---|:---|
+|:---:|:---|
 | **1** | `swift infer` with vLLM backend |
-| **2** | Normalize outputs and export human-readable detail files |
-| **3** | Compute benchmark accuracy (where local evaluator is available) |
+| **2** | Normalize outputs & export detail files |
+| **3** | Compute benchmark accuracy |
 
-Expected dataset locations:
+Expected dataset layout:
 ```
-data/raw/mmau/processed-mmau-test-mini.jsonl   data/raw/mmau/mmau-test-mini.json
-data/raw/mmar/processed-mmar.jsonl             data/raw/mmar/MMAR-meta.json
-data/raw/mmsu/processed-mmsu.jsonl             data/raw/mmsu/mmsu.jsonl
-data/raw/mmau-pro/processed-mmau-pro.jsonl     data/raw/mmau-pro/mmau-pro.json
+data/raw/mmau/processed-mmau-test-mini.jsonl    data/raw/mmau/mmau-test-mini.json
+data/raw/mmar/processed-mmar.jsonl              data/raw/mmar/MMAR-meta.json
+data/raw/mmsu/processed-mmsu.jsonl              data/raw/mmsu/mmsu.jsonl
+data/raw/mmau-pro/processed-mmau-pro.jsonl      data/raw/mmau-pro/mmau-pro.json
 ```
 
 **Example — MMAU evaluation:**
@@ -189,11 +237,13 @@ bash "${MAPO_ROOT}/src/mmau/infer.sh" \
   --devices "0,1,2,3"
 ```
 
-Swap `mmau` → `mmar`, `mmsu`, or `mmau-pro`. For adapter checkpoints pass `--adapter-name-or-path`. MMAU-Pro writes a normalized parquet during inference; run `src/mmau-pro/eval.sh` afterward.
+> Swap `mmau` → `mmar`, `mmsu`, or `mmau-pro`. For adapter checkpoints pass `--adapter-name-or-path`. MMAU-Pro additionally writes a normalized parquet during inference; run `src/mmau-pro/eval.sh` afterward.
 
 ---
 
 ## MAPO Configuration
+
+### Core Mechanisms
 
 | Parameter | Role |
 |:---|:---|
@@ -201,34 +251,32 @@ Swap `mmau` → `mmar`, `mmsu`, or `mmau-pro`. For adapter checkpoints pass `--a
 | `--mapo-mask-temperature` | Softmax temperature for relevance masks ($\tau_{\text{base}}$) |
 | `--mapo-mask-clip` | Upper cap on per-token weights ($C_{\text{mask}}$) |
 | `--mapo-temporal-kappa` | Temporal weighting exponent ($\kappa$) |
-| `--mapo-advantage-floor-eps` | Floor for advantage-scaled PG weights ($\varepsilon$) |
-| `--mapo-task-fail-gate-floor` | Lower bound for soft task-failure gate |
-| `--mapo-attn-prefactor-clip` | Upper bound for per-sequence attention prefactor ($C_{\text{pref}}$) |
 | `--mapo-attention-layers` | Target decoder layers for attention collection |
 | `--mapo-attention-head-reduce` | Head aggregation: `max` or `mean` |
 | `--mapo-attention-layer-reduce` | Layer aggregation: `max` or `mean` |
-| `--mapo-failure-reward-name` | Reward field for gating failed completions |
-| `--mapo-failure-threshold` | Threshold for task-failure detection ($\theta_{\text{fail}}$) |
 | `--mapo-pos-tags` | POS tag subset for attention-branch gating |
 | `--mapo-attention-only` | Diagnostic mode: optimize only $\eta \cdot \mathcal{L}_{\text{attn}}$ |
+
+### Gating & Stability
+
+| Parameter | Role |
+|:---|:---|
+| `--mapo-advantage-floor-eps` | Floor for advantage-scaled PG weights ($\varepsilon$) |
+| `--mapo-task-fail-gate-floor` | Lower bound for soft task-failure gate |
+| `--mapo-attn-prefactor-clip` | Upper bound for per-sequence attention prefactor ($C_{\text{pref}}$) |
+| `--mapo-failure-reward-name` | Reward field for gating failed completions |
+| `--mapo-failure-threshold` | Threshold for task-failure detection ($\theta_{\text{fail}}$) |
+
+### Text-Only Reference
+
+| Parameter | Role |
+|:---|:---|
 | `--text-only-modality-scope` | Scope for text-only reference: `audio` or `all` |
-| `--text-ref-model` / `--text-ref-load` | External text-reference model for entropy computation |
-
-<!-- ---
-
-## Citation
-
-```bibtex
-@inproceedings{mapo,
-  title     = {Escape the Language Prior: Mitigating Late-Stage Modality Collapse
-               in Audio Reasoning via Modality-Aware Policy Optimization},
-  year      = {2026},
-  note      = {Under review}
-}
-``` -->
+| `--text-ref-model` | External text-reference model path |
+| `--text-ref-load` | External text-reference checkpoint |
 
 ---
 
 ## License
 
-Apache License 2.0 (see `LICENSE`). Vendored `libs/ms-swift` carries its original Apache-2.0 license. Model weights and datasets are **not** included.
+Apache License 2.0 (see [`LICENSE`](LICENSE)). Vendored `libs/ms-swift` carries its original Apache-2.0 license. Model weights and datasets are **not** included.

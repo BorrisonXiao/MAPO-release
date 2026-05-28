@@ -1,11 +1,11 @@
-<p align="center">
+<div align="center">
   <h1>MAPO</h1>
   <h3>Modality-Aware Policy Optimization</h3>
   <p><em>Escape the Language Prior — Mitigating Late-Stage Modality Collapse in Audio Reasoning</em></p>
   <a href="https://arxiv.org/abs/2605.27741">
     <img src="https://img.shields.io/badge/arXiv-2605.27741-b31b1b.svg?style=flat-square&logo=arxiv&logoColor=white" alt="arXiv">
   </a>
-</p>
+</div>
 
 ---
 

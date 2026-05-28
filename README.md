@@ -2,6 +2,9 @@
   <h1>MAPO</h1>
   <h3>Modality-Aware Policy Optimization</h3>
   <p><em>Escape the Language Prior — Mitigating Late-Stage Modality Collapse in Audio Reasoning</em></p>
+  <a href="https://arxiv.org/abs/2605.27741">
+    <img src="https://img.shields.io/badge/arXiv-2605.27741-b31b1b.svg?style=flat-square&logo=arxiv&logoColor=white" alt="arXiv">
+  </a>
 </p>
 
 ---
@@ -242,6 +245,23 @@ bash "${MAPO_ROOT}/src/mmau/infer.sh" \
 | `--text-only-modality-scope` | Scope for text-only reference: `audio` or `all` |
 | `--text-ref-model` | External text-reference model path |
 | `--text-ref-load` | External text-reference checkpoint |
+
+---
+
+## Citation
+
+```bibtex
+@misc{xiao2026escape,
+      title={Escape the Language Prior: Mitigating Late-Stage Modality Collapse
+             in Audio Reasoning via Modality-Aware Policy Optimization},
+      author={Cihan Xiao and Yiwen Shao and Chenxing Li and Xiang He and
+              Zhenwen Liang and Steve Yves and Sanjeev Khudanpur and Liefeng Bo},
+      year={2026},
+      eprint={2605.27741},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+```
 
 ---
 
